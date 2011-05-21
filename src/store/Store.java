@@ -157,6 +157,22 @@ public class Store {
                     objectClass = returnType;
                     finderType = 1;
                 }
+            } else if(name.startsWith("get") && name.length() > 3) {
+                if(params.length != 1)
+                    throw new ConfigurationException("implied getter method requires a single parameter: " + method);
+
+                objectClass = params[0];
+                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), returnType);
+                type = 1;
+                finderType = 0;
+            } else if(name.startsWith("set") && name.length() > 3) {
+                if(params.length != 2)
+                    throw new ConfigurationException("implied setter method requires two parameters: " + method);
+
+                objectClass = params[0];
+                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), returnType);
+                type = 2;
+                finderType = 0;
             } else {
                 throw new ConfigurationException("cannot assign action to data interface method: " + method);
             }
