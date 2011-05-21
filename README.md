@@ -1,9 +1,13 @@
 
+**This is ALPHA code - use at your own risk!**
+
 Unframework Store Library
 =========================
 
 Straightforward database persistence layer, intended for use in update-heavy
 sections of your code (i.e. the model).
+
+Current source is *less than 1kLOC* of Java code.
 
 Sample Code
 -----------
