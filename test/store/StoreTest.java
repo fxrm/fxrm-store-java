@@ -6,10 +6,6 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
-/**
- *
- * @author Nikita
- */
 public class StoreTest {
     Store.Backend backend;
 
