@@ -1,13 +1,16 @@
 
 **This is ALPHA code - use at your own risk!**
 
-Unframework Store Library
-=========================
+Unframework Store API
+=====================
 
-Straightforward database persistence layer, intended for use in update-heavy
-sections of your code (i.e. the model).
+Type-safe database persistence layer API, intended for use in update-heavy
+sections of your code (i.e. the behaviour model code). Within that part of the app it is meant to replace:
 
-Current source is *less than 1kLOC* of Java code.
+* ORM libraries
+* hand-coded SQL `update` queries / direct NoSQL API calls
+
+Current source is *less than 1kLOC* of Java.
 
 Sample Code
 -----------
@@ -23,7 +26,12 @@ Sample Code
     Data db;
 
     void prettyApplicationBehaviour(User user) {
+        // update existing user
         db.setEmail(user, "foo@example.com");
+
+        // insert new record
+        User shinyNewUser = new User();
+        db.setHomeEmail(shinyNewUser, "i.just.registered@example.com");
     }
 
     void hairyInitFunction() {
@@ -32,38 +40,58 @@ Sample Code
 
 Schema is defined by creating a simple interface (see `Data` above). Then the library
 "inflates" that interface by backing it with actual database gets/sets/lookups.
+The data interface uses only domain entity and value classes and is not "polluted"
+by library-specific code (there are some optional annotations).
 
-Inserting New Records
----------------------
+Database backend implementation is pluggable. Currently, there is a rudimentary
+MySQL backend, but the API really shines when used to wrap **NoSQL/key-value data stores**.
+But then again, us work-a-day programmers can't always choose where we store data.
 
-    User shinyNewUser = new User();
-    db.setHomeEmail(shinyNewUser, "i.just.registered@example.com");
+Transaction and unit-of-work functionality can be provided by the individual
+backend implementation if necessary. There is no "pre-fetch" or data caching
+for reads - this API is laser-focused on writing data with no fuss.
 
-    // .... and somewhere in success report
-    out.println("New User ID: " + Store.extern(db, shinyNewUser));
+Inspiration
+-----------
 
-Philosophy
-----------
-
-* [CQRS](http://abdullin.com/cqrs/): what works well for updates will not be elegant for reading
+* founding ideas of [CQRS](http://abdullin.com/cqrs/)
 * [business primitives](http://codebetter.com/drusellers/2010/01/27/business-primitives-1-2/)
+* simple key-value or document-based stores (Couch, Mongo, SimpleDB, Bigtable)
 
-This library helps write update-heavy code. It allows rudimentary data read access,
-but the latter is not optimized by design. To select data in bulk
-amounts (e.g. for user interface display), use another library that is suited for that.
+I was quickly sold on the CQRS principle of splitting "view" and "model" code into
+completely separate silos - first one being completely read-only, and the other one
+being very small, testable and auditable. Then I realized that traditional ORM was
+no longer working in either of those silos.
 
-What About Validation?
-----------------------
+View code needed hand-tweaked bulk data fetches, quickly dumped into the UI. JPQL was
+clunky and limited, so I actually just started using straight SQL again.
 
-Typical tutorials will encourage putting syntax validation et al into object getters/setters. Instead,
-we rely on the business primitive class pattern:
+Model code needed simple idiomatic verbs to update stored information, with an
+occasional query for e.g. user role access control, etc. I almost went back to
+writing hand-coded SQL `update`s and `insert`s, and flexible databases like
+SimpleDB or Mongo started to look really good.
+
+But MySQL was a necessity, and I liked that ORM was type-safe and
+relatively database-agnostic. This library's approach gave me those things.
+
+Just to re-iterate: this API is not meant to be used for "view" code. Data reading
+functionality is intentionally minimal and un-optimized. There are better-suited
+tools for fetching data in bulk.
+
+Business Primitives
+-------------------
+
+Typically, syntax validation has been put into behaviour code, or model object getters/setters.
+This API is well-suited to rely on the business primitive class pattern:
 
     public class Email {
         private final String value;
 
         public Email(String v) {
-            // validation code belongs here
-            if(!v.contains("@")) throw new IllegalArgumentException("Malformed email address");
+            // sample validation condition
+            if(!v.contains("@"))
+                throw new IllegalArgumentException("Malformed email address");
+
             value = v;
         }
 
@@ -72,17 +100,27 @@ we rely on the business primitive class pattern:
     }
 
     interface Data {
+        // voila, syntax-validated database actions
         Email getHomeEmail(User u);
         void setHomeEmail(User u, Email e);
     }
 
+Type-safe get/set actions ensure that un-sanitized data does not slip through easily.
+Database backend transparently converts the value objects to and from string representation.
+
 Why Are Entity Classes Empty?
 -----------------------------
 
-Each persistent property of an entity object, such as "user's home phone" is treated
-like an independent "map", where keys are the identity instances and values are the property data.
+Entity property data is not cached or pre-fetched, just queried on demand when
+the appropriate get method is called. Hence, there need to be no mutable fields
+on the entity class.
 
-Because of that, actual classes representing entities do not need any mutable fields, unlike with traditional ORM.
-Also unlike with some traditional ORM, the database ID attribute of entity objects -
-typically stored in a string or integer "id" field - is not defined as a member
-of the object. Instead, the persistence layer keeps track of it separately.
+Even database IDs (typically a string or integer field on entity objects) are managed
+automatically by the API. Pure model code does not need to be aware of them!
+Some ORM frameworks, such as JDO, support a similar approach.
+
+Another way of looking at this: each persistent property of an entity object,
+such as "user's home phone", is treated like an independent "map", where keys are
+the identity instances and values are the property data. This maps squarely to
+the column-based database concept. And again, the identity instance itself
+needs to have no mutable state.
