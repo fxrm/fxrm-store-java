@@ -139,7 +139,7 @@ public class Store {
                     throw new ConfigurationException("finder method annotation must specify " + params.length + " fields: " + method);
 
                 for(int i = 0; i < params.length; i++)
-                    fields.put(setInfo.value()[i], params[i]);
+                    fields.put(findInfo.by()[i], params[i]);
 
                 type = 3;
 
@@ -170,7 +170,7 @@ public class Store {
                     throw new ConfigurationException("implied setter method requires two parameters: " + method);
 
                 objectClass = params[0];
-                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), returnType);
+                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), params[1]);
                 type = 2;
                 finderType = 0;
             } else {
