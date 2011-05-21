@@ -328,7 +328,8 @@ public class Store {
             }
 
             private synchronized Object getObject(Backend.Identity id) {
-                Object obj = idToObject.get(id);
+                WeakReference<Object> objRef = idToObject.get(id);
+                Object obj = objRef == null ? null : objRef.get();
                 if(obj == null) {
                     try {
                         obj = objectClass.newInstance();
