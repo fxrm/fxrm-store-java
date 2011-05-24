@@ -179,7 +179,7 @@ public class Store {
 
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
-                            Backend.Identity id = ir.getId(args[0], false);
+                            Backend.Identity id = ir.peekId(args[0]);
                             Object result = id == null ? null : getter.invoke(id);
 
                             return (result == null || ars[0] == null) ? result : ars[0].getObject((Backend.Identity)result);
@@ -190,12 +190,12 @@ public class Store {
 
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
-                            Backend.Identity id = ir.getId(args[0], true); // NOTE: instantiating before any values
+                            Backend.Identity id = ir.getId(args[0]); // NOTE: instantiating before any values
 
                             Object[] setArgs = new Object[args.length - 1];
                             System.arraycopy(args, 1, setArgs, 0, setArgs.length);
                             for(int i = 0; i < setArgs.length; i++)
-                                setArgs[i] = (ars[i] == null || setArgs[i] == null) ? setArgs[i] : ars[i].getId(setArgs[i], true);
+                                setArgs[i] = (ars[i] == null || setArgs[i] == null) ? setArgs[i] : ars[i].getId(setArgs[i]);
 
                             setter.invoke(id, setArgs);
                             return null;
@@ -212,7 +212,7 @@ public class Store {
                                 if(ars[i] == null || args[i] == null) {
                                     setArgs[i] = args[i];
                                 } else {
-                                    Backend.Identity id = ars[i].getId(args[i], false);
+                                    Backend.Identity id = ars[i].peekId(args[i]);
 
                                     // if a brand new object is one of the criteria, result is always empty
                                     if(id == null)
@@ -287,6 +287,7 @@ public class Store {
         private final Map<Class, IdentityRegistry> identities;
 
         private class IdentityRegistry {
+            // NOTE: DB identities must be stored using "strong" references
             private final WeakHashMap<Object, Backend.Identity> objectToId = new WeakHashMap<Object, Backend.Identity>();
             private final HashMap<Backend.Identity, WeakReference<Object>> idToObject = new HashMap<Backend.Identity, WeakReference<Object>>();
             private final Class objectClass;
@@ -295,9 +296,13 @@ public class Store {
                 this.objectClass = objectClass;
             }
 
-            private synchronized Backend.Identity getId(Object obj, boolean creative) throws Exception {
+            private synchronized Backend.Identity peekId(Object obj) {
+                return objectToId.get(obj);
+            }
+
+            private synchronized Backend.Identity getId(Object obj) throws Exception {
                 Backend.Identity id = objectToId.get(obj);
-                if(id == null && creative) {
+                if(id == null) {
                     id = backend.createIdentity(objectClass);
                     objectToId.put(obj, id);
                     idToObject.put(id, new WeakReference<Object>(obj));
@@ -382,13 +387,8 @@ public class Store {
      */
     public static String extern(Object store, Object obj) {
         StoreProxy sp = (StoreProxy)Proxy.getInvocationHandler(store);
-        try {
-            Backend.Identity id = sp.identities.get(obj.getClass()).getId(obj, false);
-            return sp.backend.extern(id);
-        } catch(Exception e) {
-            // TODO: define a non-throwing "peek" method to get identity instead of this
-            throw new RuntimeException("unexpected identity conversion exception", e);
-        }
+        Backend.Identity id = sp.identities.get(obj.getClass()).peekId(obj);
+        return sp.backend.extern(id);
     }
 
     /**
