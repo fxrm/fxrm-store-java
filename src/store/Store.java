@@ -59,6 +59,10 @@ public class Store {
         Object invoke(Object[] args) throws Exception;
     }
 
+    private static interface FinderImplementation {
+        Iterator<Object> invoke(Object[] args) throws Exception;
+    }
+
     private static interface Converter {
         Object convert(Object val) throws Exception;
 
@@ -232,8 +236,8 @@ public class Store {
                     final Backend.Finder finder = backend.createFinder(cols);
 
                     // common implementation returning an iterator of proper object class
-                    final StoreMethodImplementation iter = new StoreMethodImplementation() {
-                        public Object invoke(Object[] args) throws Exception {
+                    final FinderImplementation findImpl = new FinderImplementation() {
+                        public Iterator<Object> invoke(Object[] args) throws Exception {
                             Object[] setArgs = new Object[args.length];
                             for(int i = 0; i < args.length; i++) {
                                 if(ars[i] == null || args[i] == null) {
@@ -272,14 +276,14 @@ public class Store {
                         case 1:
                             return new StoreMethodImplementation() {
                                 public Object invoke(Object[] args) throws Exception {
-                                    Iterator found = (Iterator)iter.invoke(args);
+                                    Iterator found = findImpl.invoke(args);
                                     return found.hasNext() ? found.next() : null;
                                 }
                             };
                         case 2:
                             return new StoreMethodImplementation() {
                                 public Object invoke(Object[] args) throws Exception {
-                                    Iterator found = (Iterator)iter.invoke(args);
+                                    Iterator found = findImpl.invoke(args);
 
                                     ArrayList<Object> result = new ArrayList<Object>();
                                     while(found.hasNext())
@@ -291,7 +295,7 @@ public class Store {
                         case 3:
                             return new StoreMethodImplementation() {
                                 public Object invoke(Object[] args) throws Exception {
-                                    Iterator found = (Iterator)iter.invoke(args);
+                                    Iterator found = findImpl.invoke(args);
 
                                     ArrayList<Object> result = new ArrayList<Object>();
                                     while(found.hasNext())
