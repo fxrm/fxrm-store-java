@@ -127,7 +127,7 @@ public class Store {
                     throw new ConfigurationException("implied getter method requires a single parameter: " + method);
 
                 objectClass = params[0];
-                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), returnType);
+                fields.put(getImpliedPropertyName(objectClass, name.substring(3)), returnType);
                 type = 1;
                 finderType = 0;
             } else if(name.startsWith("set") && name.length() > 3) {
@@ -135,12 +135,26 @@ public class Store {
                     throw new ConfigurationException("implied setter method requires two parameters: " + method);
 
                 objectClass = params[0];
-                fields.put(Character.toLowerCase(name.charAt(3)) + name.substring(4), params[1]);
+                fields.put(getImpliedPropertyName(objectClass, name.substring(3)), params[1]);
                 type = 2;
                 finderType = 0;
             } else {
                 throw new ConfigurationException("cannot assign action to data interface method: " + method);
             }
+        }
+
+        private String getImpliedPropertyName(Class objectClass, String afterVerb) {
+            // if the property name with owning class name remove the class name
+            // e.g. "UserEmail" -> "Email"
+            String classPrefix = objectClass.getSimpleName();
+            if(afterVerb.startsWith(classPrefix))
+                afterVerb = afterVerb.substring(classPrefix.length());
+
+            if(afterVerb.length() < 1)
+                throw new ConfigurationException("cannot determine implied property name");
+
+            // lowercase the first character
+            return Character.toLowerCase(afterVerb.charAt(0)) + afterVerb.substring(1);
         }
 
         private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {

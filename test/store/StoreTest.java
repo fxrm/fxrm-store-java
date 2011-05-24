@@ -22,20 +22,20 @@ public class StoreTest {
         backend = null;
     }
 
-    private static interface ImpliedGet { String getAbc(Object id); }
+    private static interface ImpliedGet { String getAbc(Object id); String getObjectAbc(Object id); }
 
     @Test
     public void impliedGet() throws Exception {
         Store.create(ImpliedGet.class, backend);
-        verify(backend).createColumn(Object.class, "abc", String.class, false);
+        verify(backend, times(2)).createColumn(Object.class, "abc", String.class, false);
     }
 
-    private static interface ImpliedSet { void setAbc(Object id, String val); }
+    private static interface ImpliedSet { void setAbc(Object id, String val); void setObjectAbc(Object id, String val); }
 
     @Test
     public void impliedSet() throws Exception {
         Store.create(ImpliedSet.class, backend);
-        verify(backend).createColumn(Object.class, "abc", String.class, false);
+        verify(backend, times(2)).createColumn(Object.class, "abc", String.class, false);
     }
 
     private static interface BasicGet { @Store.Get("abc") String foo(Object inst); }
