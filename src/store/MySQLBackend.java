@@ -30,10 +30,16 @@ public class MySQLBackend implements Store.Backend {
         this.ds = ds;
     }
 
+    private String computeClassTable(Class objectClass) {
+        return objectClass.getSimpleName();
+    }
+
     public class IdentityImpl implements Store.Backend.Identity {
+        private final String table;
         private final int rowId;
 
-        public IdentityImpl(int rowId) {
+        private IdentityImpl(String table, int rowId) {
+            this.table = table;
             this.rowId = rowId;
         }
 
@@ -44,18 +50,20 @@ public class MySQLBackend implements Store.Backend {
 
         @Override
         public boolean equals(Object obj) {
-            if(obj instanceof IdentityImpl)
-                return ((IdentityImpl)obj).rowId == this.rowId; // TODO: check table? meh
+            if(obj instanceof IdentityImpl) {
+                IdentityImpl id = (IdentityImpl)obj;
+                return id.rowId == this.rowId && id.table.equals(this.table);
+            }
 
             return false;
         }
     }
 
     public abstract class ColumnImpl implements Store.Backend.Column {
-        private final String table, field;
+        protected final String table, field;
 
         private ColumnImpl(Class objectClass, String field) {
-            this.table = objectClass.getSimpleName();
+            this.table = computeClassTable(objectClass);
             this.field = field.toString();
         }
 
@@ -131,10 +139,12 @@ public class MySQLBackend implements Store.Backend {
     public Finder createFinder(final Column[] cols) {
         return new Finder() {
             public Collection<Identity> invoke(Object[] args) throws Exception {
+                String table = ((ColumnImpl)cols[0]).table;
+
                 final String sql;
                 {
                     StringBuffer sb = new StringBuffer();
-                    sb.append("select id from `").append(((ColumnImpl)cols[0]).table).append("` where ");
+                    sb.append("select id from `").append(table).append("` where ");
 
                     boolean first = true;
                     for(int i = 0; i < cols.length; i++) {
@@ -164,7 +174,7 @@ public class MySQLBackend implements Store.Backend {
 
                     ArrayList<Identity> result = new ArrayList<Identity>();
                     while(rs.next())
-                        result.add(new IdentityImpl(rs.getInt(1)));
+                        result.add(new IdentityImpl(table, rs.getInt(1)));
 
                     return result;
                 } finally {
@@ -175,7 +185,7 @@ public class MySQLBackend implements Store.Backend {
     }
 
     public Identity createIdentity(Class objectClass) throws SQLException {
-        final String table = objectClass.getSimpleName();
+        final String table = computeClassTable(objectClass);
 
         Connection conn = ds.getConnection();
         try {
@@ -186,7 +196,7 @@ public class MySQLBackend implements Store.Backend {
             if(!rs.next())
                 throw new RuntimeException("no created ID returned"); // TODO: custom error
 
-            return new IdentityImpl(rs.getInt(1));
+            return new IdentityImpl(table, rs.getInt(1));
         } finally {
             conn.close();
         }
@@ -194,7 +204,7 @@ public class MySQLBackend implements Store.Backend {
 
     public Identity intern(Class objectClass, String externalId) {
         int id = Integer.parseInt(externalId.toString()); // NOTE: triggering NPE explicitly
-        return new IdentityImpl(id);
+        return new IdentityImpl(computeClassTable(objectClass), id);
     }
 
     public String extern(Identity id) {
@@ -208,7 +218,7 @@ public class MySQLBackend implements Store.Backend {
             return new ColumnImpl(objectClass, field) {
                 @Override
                 Object readFirstValue(ResultSet rs) throws SQLException {
-                    return new IdentityImpl(rs.getInt(1));
+                    return new IdentityImpl(table, rs.getInt(1));
                 }
 
                 @Override
