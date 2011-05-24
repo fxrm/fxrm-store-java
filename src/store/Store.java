@@ -59,6 +59,17 @@ public class Store {
         Object invoke(Object[] args) throws Exception;
     }
 
+    private static interface Converter {
+        Object convert(Object val) throws Exception;
+
+        final Converter DUMMY = new Converter() {
+            @Override
+            public Object convert(Object val) {
+                return val;
+            }
+        };
+    }
+
     private static class StoreMethodInfo {
         private final Class objectClass;
         private final LinkedHashMap<String, Class> fields = new LinkedHashMap<String, Class>();
@@ -160,13 +171,31 @@ public class Store {
         private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {
             final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
             final StoreProxy.IdentityRegistry[] ars = new StoreProxy.IdentityRegistry[fields.size()];
+            final Converter[] fromDB = new Converter[fields.size()];
+            final Converter[] toDB = new Converter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
             for(Map.Entry<String, Class> field: fields.entrySet()) {
-                ars[count] = identities.get(field.getValue());
+                final StoreProxy.IdentityRegistry ar = identities.get(field.getValue());
+                ars[count] = ar;
+
+                fromDB[count] = ar == null ? Converter.DUMMY : new Converter() {
+                    @Override
+                    public Object convert(Object val) {
+                        return val == null ? null : ar.getObject((Backend.Identity)val);
+                    }
+                };
+
+                toDB[count] = ar == null ? Converter.DUMMY : new Converter() {
+                    @Override
+                    public Object convert(Object val) throws Exception {
+                        return val == null ? null : ar.getId(val);
+                    }
+                };
+
                 try {
-                    cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ars[count] != null);
+                    cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ar != null);
                 } catch(Exception e) {
                     throw new BackendException(e);
                 }
@@ -180,9 +209,7 @@ public class Store {
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
                             Backend.Identity id = ir.peekId(args[0]);
-                            Object result = id == null ? null : getter.invoke(id);
-
-                            return (result == null || ars[0] == null) ? result : ars[0].getObject((Backend.Identity)result);
+                            return fromDB[0].convert(id == null ? null : getter.invoke(id));
                         }
                     };
                 case 2:
@@ -195,7 +222,7 @@ public class Store {
                             Object[] setArgs = new Object[args.length - 1];
                             System.arraycopy(args, 1, setArgs, 0, setArgs.length);
                             for(int i = 0; i < setArgs.length; i++)
-                                setArgs[i] = (ars[i] == null || setArgs[i] == null) ? setArgs[i] : ars[i].getId(setArgs[i]);
+                                setArgs[i] = toDB[i].convert(setArgs[i]);
 
                             setter.invoke(id, setArgs);
                             return null;
