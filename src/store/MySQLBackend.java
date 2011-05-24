@@ -171,7 +171,7 @@ public class MySQLBackend implements Store.Backend {
                     boolean first = true;
                     for(int i = 0; i < cols.length; i++) {
                         sb.append(first ? "" : " and ");
-                        sb.append("`").append(bt(((ColumnImpl)cols[i]).column)).append(args[i] == null ? "is null" : "` = ?");
+                        sb.append("`").append(bt(((ColumnImpl)cols[i]).column)).append(args[i] == null ? "` is null" : "` = ?");
                         first = false;
                     }
 
