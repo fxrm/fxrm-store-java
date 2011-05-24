@@ -43,41 +43,6 @@ public class Store {
         String[] by();
     }
 
-    /**
-     * Generic database backend.
-     * @author Nikita
-     */
-    public static interface Backend {
-        Getter createGetter(Column col);
-        Setter createSetter(Column[] cols);
-        Finder createFinder(Column[] cols);
-
-        Identity createIdentity(Class objectClass) throws Exception;
-        
-        Identity intern(Class objectClass, String externalId);
-        String extern(Identity id);
-
-        Column createColumn(Class objectClass, String field, Class fieldType, boolean isIdentity) throws Exception;
-
-        public interface Identity {
-        }
-
-        public interface Column {
-        }
-
-        public interface Getter {
-            Object invoke(Identity id) throws Exception;
-        }
-
-        public interface Setter {
-            void invoke(Identity id, Object[] args) throws Exception;
-        }
-
-        public interface Finder {
-            Collection<Identity> invoke(Object[] args) throws Exception;
-        }
-    }
-
     public static class ConfigurationException extends RuntimeException {
         public ConfigurationException(String message) {
             super(message);

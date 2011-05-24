@@ -7,13 +7,13 @@ import static org.junit.Assert.*;
 import static org.mockito.Mockito.*;
 
 public class StoreTest {
-    Store.Backend backend;
+    Backend backend;
 
     @Before
     public void setUp() {
-        backend = mock(Store.Backend.class);
+        backend = mock(Backend.class);
 
-        Store.Backend.Identity testId = new Store.Backend.Identity() { };
+        Backend.Identity testId = new Backend.Identity() { };
         when(backend.intern(Object.class, "testId")).thenReturn(testId);
     }
 

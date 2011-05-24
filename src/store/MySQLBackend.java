@@ -23,7 +23,7 @@ import javax.sql.DataSource;
 /**
  * Simple MySQL data store backend.
  */
-public class MySQLBackend implements Store.Backend {
+public class MySQLBackend implements Backend {
     private final DataSource ds;
     private final Naming naming;
 
@@ -54,7 +54,7 @@ public class MySQLBackend implements Store.Backend {
         return nativeName.replace("`", "``");
     }
 
-    public class IdentityImpl implements Store.Backend.Identity {
+    public class IdentityImpl implements Backend.Identity {
         private final String table;
         private final int rowId;
 
@@ -79,7 +79,7 @@ public class MySQLBackend implements Store.Backend {
         }
     }
 
-    public abstract class ColumnImpl implements Store.Backend.Column {
+    public abstract class ColumnImpl implements Backend.Column {
         protected final String table, column, idColumn;
 
         private ColumnImpl(Class objectClass, String field) {
