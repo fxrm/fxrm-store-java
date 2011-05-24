@@ -50,6 +50,10 @@ public class MySQLBackend implements Store.Backend {
         }
     }
 
+    private static String bt(String nativeName) {
+        return nativeName.replace("`", "``");
+    }
+
     public class IdentityImpl implements Store.Backend.Identity {
         private final String table;
         private final int rowId;
@@ -90,7 +94,7 @@ public class MySQLBackend implements Store.Backend {
 
     public Getter createGetter(Column pcol) {
         final ColumnImpl col = (ColumnImpl)pcol;
-        final String sql = "select `" + col.column + "` from `" + col.table + "` where `" + col.idColumn + "` = ?";
+        final String sql = "select `" + bt(col.column) + "` from `" + bt(col.table) + "` where `" + bt(col.idColumn) + "` = ?";
 
         return new Getter() {
             public Object invoke(Identity pid) throws SQLException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException {
@@ -118,16 +122,16 @@ public class MySQLBackend implements Store.Backend {
         final String sql;
         {
             StringBuffer sb = new StringBuffer();
-            sb.append("update `").append(((ColumnImpl)cols[0]).table).append("` set ");
+            sb.append("update `").append(bt(((ColumnImpl)cols[0]).table)).append("` set ");
 
             boolean first = true;
             for(Column col: cols) {
                 sb.append(first ? "" : ", ");
-                sb.append("`").append(((ColumnImpl)col).column).append("` = ?");
+                sb.append("`").append(bt(((ColumnImpl)col).column)).append("` = ?");
                 first = false;
             }
 
-            sb.append(" where `" + ((ColumnImpl)cols[0]).idColumn + "` = ?");
+            sb.append(" where `" + bt(((ColumnImpl)cols[0]).idColumn) + "` = ?");
 
             sql = sb.toString();
         }
@@ -162,12 +166,12 @@ public class MySQLBackend implements Store.Backend {
                 final String sql;
                 {
                     StringBuffer sb = new StringBuffer();
-                    sb.append("select `" + idCol + "` from `").append(table).append("` where ");
+                    sb.append("select `" + bt(idCol) + "` from `").append(bt(table)).append("` where ");
 
                     boolean first = true;
                     for(int i = 0; i < cols.length; i++) {
                         sb.append(first ? "" : " and ");
-                        sb.append("`").append(((ColumnImpl)cols[i]).column).append(args[i] == null ? "is null" : "` = ?");
+                        sb.append("`").append(bt(((ColumnImpl)cols[i]).column)).append(args[i] == null ? "is null" : "` = ?");
                         first = false;
                     }
 
@@ -208,7 +212,7 @@ public class MySQLBackend implements Store.Backend {
 
         Connection conn = ds.getConnection();
         try {
-            CallableStatement cs = conn.prepareCall("insert into `" + table + "` (`" + idCol + "`) values (NULL)");
+            CallableStatement cs = conn.prepareCall("insert into `" + bt(table) + "` (`" + bt(idCol) + "`) values (NULL)");
             cs.execute();
 
             ResultSet rs = cs.getGeneratedKeys();
