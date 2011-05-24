@@ -25,13 +25,29 @@ import javax.sql.DataSource;
  */
 public class MySQLBackend implements Store.Backend {
     private final DataSource ds;
+    private final Naming naming;
 
     public MySQLBackend(DataSource ds) {
-        this.ds = ds;
+        this(ds, new Naming());
     }
 
-    private String computeClassTable(Class objectClass) {
-        return objectClass.getSimpleName();
+    public MySQLBackend(DataSource ds, Naming naming) {
+        this.ds = ds;
+        this.naming = naming;
+    }
+
+    public static class Naming {
+        public String table(Class objectClass) {
+            return objectClass.getSimpleName();
+        }
+
+        public String tableIdColumn(Class objectClass) {
+            return "id";
+        }
+
+        public String tableColumn(Class objectClass, String field) {
+            return field;
+        }
     }
 
     public class IdentityImpl implements Store.Backend.Identity {
@@ -60,11 +76,12 @@ public class MySQLBackend implements Store.Backend {
     }
 
     public abstract class ColumnImpl implements Store.Backend.Column {
-        protected final String table, field;
+        protected final String table, column, idColumn;
 
         private ColumnImpl(Class objectClass, String field) {
-            this.table = computeClassTable(objectClass);
-            this.field = field.toString();
+            this.table = naming.table(objectClass);
+            this.column = naming.tableColumn(objectClass, field).toString();
+            this.idColumn = naming.tableIdColumn(objectClass);
         }
 
         abstract Object readFirstValue(ResultSet rs) throws SQLException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException;
@@ -73,7 +90,7 @@ public class MySQLBackend implements Store.Backend {
 
     public Getter createGetter(Column pcol) {
         final ColumnImpl col = (ColumnImpl)pcol;
-        final String sql = "select `" + col.field + "` from `" + col.table + "` where id = ?";
+        final String sql = "select `" + col.column + "` from `" + col.table + "` where `" + col.idColumn + "` = ?";
 
         return new Getter() {
             public Object invoke(Identity pid) throws SQLException, NoSuchMethodException, InstantiationException, IllegalAccessException, InvocationTargetException {
@@ -106,11 +123,11 @@ public class MySQLBackend implements Store.Backend {
             boolean first = true;
             for(Column col: cols) {
                 sb.append(first ? "" : ", ");
-                sb.append("`").append(((ColumnImpl)col).field).append("` = ?");
+                sb.append("`").append(((ColumnImpl)col).column).append("` = ?");
                 first = false;
             }
 
-            sb.append(" where id = ?");
+            sb.append(" where `" + ((ColumnImpl)cols[0]).idColumn + "` = ?");
 
             sql = sb.toString();
         }
@@ -140,16 +157,17 @@ public class MySQLBackend implements Store.Backend {
         return new Finder() {
             public Collection<Identity> invoke(Object[] args) throws Exception {
                 String table = ((ColumnImpl)cols[0]).table;
+                String idCol = ((ColumnImpl)cols[0]).idColumn;
 
                 final String sql;
                 {
                     StringBuffer sb = new StringBuffer();
-                    sb.append("select id from `").append(table).append("` where ");
+                    sb.append("select `" + idCol + "` from `").append(table).append("` where ");
 
                     boolean first = true;
                     for(int i = 0; i < cols.length; i++) {
                         sb.append(first ? "" : " and ");
-                        sb.append("`").append(((ColumnImpl)cols[i]).field).append(args[i] == null ? "is null" : "` = ?");
+                        sb.append("`").append(((ColumnImpl)cols[i]).column).append(args[i] == null ? "is null" : "` = ?");
                         first = false;
                     }
 
@@ -185,11 +203,12 @@ public class MySQLBackend implements Store.Backend {
     }
 
     public Identity createIdentity(Class objectClass) throws SQLException {
-        final String table = computeClassTable(objectClass);
+        final String table = naming.table(objectClass);
+        final String idCol = naming.tableIdColumn(objectClass);
 
         Connection conn = ds.getConnection();
         try {
-            CallableStatement cs = conn.prepareCall("insert into `" + table + "` (id) values (NULL)");
+            CallableStatement cs = conn.prepareCall("insert into `" + table + "` (`" + idCol + "`) values (NULL)");
             cs.execute();
 
             ResultSet rs = cs.getGeneratedKeys();
@@ -204,7 +223,7 @@ public class MySQLBackend implements Store.Backend {
 
     public Identity intern(Class objectClass, String externalId) {
         int id = Integer.parseInt(externalId.toString()); // NOTE: triggering NPE explicitly
-        return new IdentityImpl(computeClassTable(objectClass), id);
+        return new IdentityImpl(naming.table(objectClass), id);
     }
 
     public String extern(Identity id) {
