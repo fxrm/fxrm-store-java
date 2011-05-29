@@ -5,8 +5,9 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package store;
+package org.unframework.store.util;
 
+import org.unframework.store.Store;
 import java.util.ArrayList;
 import java.util.List;
 

@@ -5,8 +5,9 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package store;
+package org.unframework.store.backend;
 
+import org.unframework.store.Backend;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.CallableStatement;

@@ -1,4 +1,4 @@
-package store;
+package org.unframework.store;
 
 import org.junit.After;
 import org.junit.Before;
