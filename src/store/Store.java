@@ -43,6 +43,11 @@ public class Store {
         String[] by();
     }
 
+    public static interface Converter {
+        Object intern(Object val) throws Exception;
+        Object extern(Object val) throws Exception;
+    }
+
     public static class ConfigurationException extends RuntimeException {
         public ConfigurationException(String message) {
             super(message);
@@ -63,16 +68,17 @@ public class Store {
         Iterator<Object> invoke(Object[] args) throws Exception;
     }
 
-    private static interface Converter {
-        Object convert(Object val) throws Exception;
+    private static final Converter DUMMY = new Converter() {
+        @Override
+        public Object intern(Object val) {
+            return val;
+        }
 
-        final Converter DUMMY = new Converter() {
-            @Override
-            public Object convert(Object val) {
-                return val;
-            }
-        };
-    }
+        @Override
+        public Object extern(Object val) {
+            return val;
+        }
+    };
 
     private static class StoreMethodInfo {
         private final Class objectClass;
@@ -175,8 +181,7 @@ public class Store {
         private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {
             final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
             final StoreProxy.IdentityRegistry[] ars = new StoreProxy.IdentityRegistry[fields.size()];
-            final Converter[] fromDB = new Converter[fields.size()];
-            final Converter[] toDB = new Converter[fields.size()];
+            final Converter[] conv = new Converter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
@@ -184,16 +189,14 @@ public class Store {
                 final StoreProxy.IdentityRegistry ar = identities.get(field.getValue());
                 ars[count] = ar;
 
-                fromDB[count] = ar == null ? Converter.DUMMY : new Converter() {
+                conv[count] = ar == null ? DUMMY : new Converter() {
                     @Override
-                    public Object convert(Object val) {
+                    public Object intern(Object val) {
                         return val == null ? null : ar.getObject((Backend.Identity)val);
                     }
-                };
 
-                toDB[count] = ar == null ? Converter.DUMMY : new Converter() {
                     @Override
-                    public Object convert(Object val) throws Exception {
+                    public Object extern(Object val) throws Exception {
                         return val == null ? null : ar.getId(val);
                     }
                 };
@@ -213,7 +216,7 @@ public class Store {
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
                             Backend.Identity id = ir.peekId(args[0]);
-                            return fromDB[0].convert(id == null ? null : getter.invoke(id));
+                            return conv[0].intern(id == null ? null : getter.invoke(id));
                         }
                     };
                 case 2:
@@ -226,7 +229,7 @@ public class Store {
                             Object[] setArgs = new Object[args.length - 1];
                             System.arraycopy(args, 1, setArgs, 0, setArgs.length);
                             for(int i = 0; i < setArgs.length; i++)
-                                setArgs[i] = toDB[i].convert(setArgs[i]);
+                                setArgs[i] = conv[i].extern(setArgs[i]);
 
                             setter.invoke(id, setArgs);
                             return null;
