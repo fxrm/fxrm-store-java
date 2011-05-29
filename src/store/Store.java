@@ -9,7 +9,6 @@ package store;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
-import java.lang.ref.WeakReference;
 import java.lang.reflect.Array;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
@@ -22,7 +21,6 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.WeakHashMap;
 
 /**
  * Simple non-intrusive data store interface. Allows type-safe declaration of simple schema.
@@ -83,75 +81,6 @@ public class Store {
 
     private static interface FinderImplementation {
         Iterator<Object> invoke(Object[] args) throws Exception;
-    }
-
-    private static interface InternalConverter {
-        Object intern(Object val) throws Exception;
-        Object extern(Object val) throws Exception;
-    }
-
-    private static final InternalConverter DUMMY = new InternalConverter() {
-        @Override
-        public Object intern(Object val) {
-            return val;
-        }
-
-        @Override
-        public Object extern(Object val) {
-            return val;
-        }
-    };
-
-    /**
-     * Property value converter dedicated to identity properties.
-     */
-    private static class IdentityConverter implements InternalConverter {
-        private final StoreProxy.IdentityRegistry ar;
-
-        // special marker value when peeking
-        static final Object NONEXISTENT = new Object();
-
-        public IdentityConverter(StoreProxy.IdentityRegistry ar) {
-            this.ar = ar;
-        }
-
-        @Override
-        public Object intern(Object val) {
-            return ar.getObject((Backend.Identity)val);
-        }
-
-        @Override
-        public Object extern(Object val) throws Exception {
-            return ar.getId(val);
-        }
-
-        public Object peek(Object val) {
-            Object result = ar.peekId(val);
-            return result == null ? NONEXISTENT : result;
-        }
-    }
-
-    /**
-     * Property value converter dedicated to identity properties.
-     */
-    private static class CustomConverter implements InternalConverter {
-        private final StoreProxy store;
-        private final Converter impl;
-
-        public CustomConverter(StoreProxy store, Converter impl) {
-            this.store = store;
-            this.impl = impl;
-        }
-
-        @Override
-        public Object intern(Object val) throws Exception {
-            return impl.intern(store, val);
-        }
-
-        @Override
-        public Object extern(Object val) throws Exception {
-            return impl.extern(store, val);
-        }
     }
 
     private static class StoreMethodInfo {
@@ -252,17 +181,17 @@ public class Store {
             return Character.toLowerCase(afterVerb.charAt(0)) + afterVerb.substring(1);
         }
 
-        private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities, Map<Class, Map<String, CustomConverter>> customConvs) {
-            final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
-            final InternalConverter[] conv = new InternalConverter[fields.size()];
+        private StoreMethodImplementation createImplementation(Backend backend, Map<Class, IdentityRegistry> identities, Map<Class, Map<String, PropertyConverter>> customConvs) {
+            final IdentityRegistry ir = identities.get(objectClass);
+            final PropertyConverter[] conv = new PropertyConverter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
             for(Map.Entry<String, Class> field: fields.entrySet()) {
-                final StoreProxy.IdentityRegistry ar = identities.get(field.getValue());
-                final CustomConverter customConv = customConvs.get(objectClass).get(field.getKey());
+                final IdentityRegistry ar = identities.get(field.getValue());
+                final PropertyConverter customConv = customConvs.get(objectClass).get(field.getKey());
 
-                conv[count] = ar == null ? (customConv == null ? DUMMY : customConv) : new IdentityConverter(ar);
+                conv[count] = ar == null ? (customConv == null ? PropertyConverter.DUMMY : customConv) : new PropertyConverter.Identity(ar);
 
                 try {
                     cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ar != null);
@@ -310,11 +239,11 @@ public class Store {
                             for(int i = 0; i < args.length; i++) {
                                 if(args[i] != null) {
                                     // use the "peek" mode if converting an identity object to detect brand new instances
-                                    if(conv[i] instanceof IdentityConverter) {
-                                        setArgs[i] = ((IdentityConverter)conv[i]).peek(args[i]);
+                                    if(conv[i] instanceof PropertyConverter.Identity) {
+                                        setArgs[i] = ((PropertyConverter.Identity)conv[i]).peek(args[i]);
 
                                         // if a brand new object is one of the criteria, result is always empty
-                                        if(setArgs[i] == IdentityConverter.NONEXISTENT)
+                                        if(setArgs[i] == PropertyConverter.Identity.NONEXISTENT)
                                             return Collections.emptySet().iterator();
                                     } else {
                                         setArgs[i] = conv[i].extern(args[i]);
@@ -386,49 +315,6 @@ public class Store {
         private final Map<Method, StoreMethodImplementation> actions;
         private final Map<Class, IdentityRegistry> identities;
 
-        private class IdentityRegistry {
-            // NOTE: DB identities must be stored using "strong" references
-            private final WeakHashMap<Object, Backend.Identity> objectToId = new WeakHashMap<Object, Backend.Identity>();
-            private final HashMap<Backend.Identity, WeakReference<Object>> idToObject = new HashMap<Backend.Identity, WeakReference<Object>>();
-            private final Class objectClass;
-
-            private IdentityRegistry(Class objectClass) {
-                this.objectClass = objectClass;
-            }
-
-            private synchronized Backend.Identity peekId(Object obj) {
-                return objectToId.get(obj);
-            }
-
-            private synchronized Backend.Identity getId(Object obj) throws Exception {
-                Backend.Identity id = objectToId.get(obj);
-                if(id == null) {
-                    id = backend.createIdentity(objectClass);
-                    objectToId.put(obj, id);
-                    idToObject.put(id, new WeakReference<Object>(obj));
-                }
-
-                return id;
-            }
-
-            private synchronized Object getObject(Backend.Identity id) {
-                WeakReference<Object> objRef = idToObject.get(id);
-                Object obj = objRef == null ? null : objRef.get();
-                if(obj == null) {
-                    try {
-                        obj = objectClass.newInstance();
-                    } catch(Exception e) {
-                        throw new RuntimeException("identity object constructor error", e); // TODO: dedicated exception class?
-                    }
-
-                    objectToId.put(obj, id);
-                    idToObject.put(id, new WeakReference<Object>(obj));
-                }
-
-                return obj;
-            }
-        }
-
         public StoreProxy(Class iface, Backend backend) {
             this.backend = backend;
 
@@ -438,15 +324,15 @@ public class Store {
             // parse database action info for each method
             HashMap<Method, StoreMethodInfo> info = new HashMap<Method, StoreMethodInfo>();
             HashMap<Class, IdentityRegistry> reg = new HashMap<Class, IdentityRegistry>();
-            HashMap<Class, Map<String, CustomConverter>> convs = new HashMap<Class, Map<String, CustomConverter>>();
+            HashMap<Class, Map<String, PropertyConverter>> convs = new HashMap<Class, Map<String, PropertyConverter>>();
             for(Method method: iface.getMethods()) {
                 StoreMethodInfo mi = new StoreMethodInfo(method);
                 info.put(method, mi);
 
                 // track another identity class if necessary
                 if(!reg.containsKey(mi.objectClass)) {
-                    reg.put(mi.objectClass, new IdentityRegistry(mi.objectClass));
-                    convs.put(mi.objectClass, new HashMap<String, CustomConverter>());
+                    reg.put(mi.objectClass, new IdentityRegistry(mi.objectClass, backend));
+                    convs.put(mi.objectClass, new HashMap<String, PropertyConverter>());
                 }
             }
 
@@ -456,7 +342,7 @@ public class Store {
                 for(Convert c: other.converters()) {
                     try {
                         Converter convInstance = c.convert().newInstance();
-                        convs.get(c.object()).put(c.property(), new CustomConverter(this, convInstance));
+                        convs.get(c.object()).put(c.property(), new PropertyConverter.Custom(this, convInstance));
                     } catch(IllegalAccessException e) {
                         throw new RuntimeException(e); // TODO: better error?
                     } catch(InstantiationException e) {
