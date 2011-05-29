@@ -86,12 +86,8 @@ public class Store {
     }
 
     private static interface InternalConverter {
-        // special marker value when peeking
-        static final Object NONEXISTENT = new Object();
-
         Object intern(Object val) throws Exception;
         Object extern(Object val) throws Exception;
-        Object peek(Object val) throws Exception;
     }
 
     private static final InternalConverter DUMMY = new InternalConverter() {
@@ -104,11 +100,6 @@ public class Store {
         public Object extern(Object val) {
             return val;
         }
-
-        @Override
-        public Object peek(Object val) {
-            return val;
-        }
     };
 
     /**
@@ -116,6 +107,9 @@ public class Store {
      */
     private static class IdentityConverter implements InternalConverter {
         private final StoreProxy.IdentityRegistry ar;
+
+        // special marker value when peeking
+        static final Object NONEXISTENT = new Object();
 
         public IdentityConverter(StoreProxy.IdentityRegistry ar) {
             this.ar = ar;
@@ -131,7 +125,6 @@ public class Store {
             return ar.getId(val);
         }
 
-        @Override
         public Object peek(Object val) {
             Object result = ar.peekId(val);
             return result == null ? NONEXISTENT : result;
@@ -157,11 +150,6 @@ public class Store {
 
         @Override
         public Object extern(Object val) throws Exception {
-            return impl.extern(store, val);
-        }
-
-        @Override
-        public Object peek(Object val) throws Exception {
             return impl.extern(store, val);
         }
     }
@@ -322,11 +310,15 @@ public class Store {
                             for(int i = 0; i < args.length; i++) {
                                 if(args[i] != null) {
                                     // use the "peek" mode if converting an identity object to detect brand new instances
-                                    setArgs[i] = conv[i].peek(args[i]);
+                                    if(conv[i] instanceof IdentityConverter) {
+                                        setArgs[i] = ((IdentityConverter)conv[i]).peek(args[i]);
 
-                                    // if a brand new object is one of the criteria, result is always empty
-                                    if(setArgs[i] == InternalConverter.NONEXISTENT)
-                                        return Collections.emptySet().iterator();
+                                        // if a brand new object is one of the criteria, result is always empty
+                                        if(setArgs[i] == IdentityConverter.NONEXISTENT)
+                                            return Collections.emptySet().iterator();
+                                    } else {
+                                        setArgs[i] = conv[i].extern(args[i]);
+                                    }
                                 }
                             }
 
