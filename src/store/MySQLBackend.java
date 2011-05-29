@@ -234,23 +234,23 @@ public class MySQLBackend implements Backend {
         return Integer.toString(((IdentityImpl)id).rowId);
     }
 
-    public Column createColumn(Class objectClass, String field, final Class fieldType, boolean isIdentity) throws NoSuchMethodException {
-        if(isIdentity) {
+    public Column createIdentityColumn(Class objectClass, String field, final Class referenceClass) {
+        // identities are always treated as ints
+        return new ColumnImpl(objectClass, field) {
+            @Override
+            Object readFirstValue(ResultSet rs) throws SQLException {
+                return new IdentityImpl(table, rs.getInt(1));
+            }
 
-            // identities are always treated as ints
-            return new ColumnImpl(objectClass, field) {
-                @Override
-                Object readFirstValue(ResultSet rs) throws SQLException {
-                    return new IdentityImpl(table, rs.getInt(1));
-                }
+            @Override
+            void setValue(PreparedStatement ps, int i, Object value) throws SQLException {
+                ps.setInt(i, ((IdentityImpl)value).rowId);
+            }
+        };
+    }
 
-                @Override
-                void setValue(PreparedStatement ps, int i, Object value) throws SQLException {
-                    ps.setInt(i, ((IdentityImpl)value).rowId);
-                }
-            };
-
-        } else if(fieldType == String.class) {
+    public Column createColumn(Class objectClass, String field, final Class fieldType) throws NoSuchMethodException {
+        if(fieldType == String.class) {
 
             // strings correspond to VARCHAR
             return new ColumnImpl(objectClass, field) {

@@ -192,10 +192,11 @@ public class Store {
                 final PropertyConverter customConv = customConvs.get(objectClass).get(field.getKey());
 
                 conv[count] = ar == null ? (customConv == null ? PropertyConverter.DUMMY : customConv) : new PropertyConverter.Identity(ar);
-                Class dbValueClass = ar == null && customConv != null ? String.class : field.getValue();
 
                 try {
-                    cols[count] = backend.createColumn(objectClass, field.getKey(), dbValueClass, ar != null);
+                    cols[count] = ar == null ?
+                        backend.createColumn(objectClass, field.getKey(), customConv != null ? String.class : field.getValue()) :
+                        backend.createIdentityColumn(objectClass, field.getKey(), field.getValue());
                 } catch(Exception e) {
                     throw new BackendException(e);
                 }

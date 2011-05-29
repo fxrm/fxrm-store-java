@@ -22,7 +22,8 @@ public interface Backend {
     Identity intern(Class objectClass, String externalId);
     String extern(Identity id);
 
-    Column createColumn(Class objectClass, String field, Class fieldType, boolean isIdentity) throws Exception;
+    Column createIdentityColumn(Class objectClass, String field, Class referenceClass) throws Exception;
+    Column createColumn(Class objectClass, String field, Class fieldType) throws Exception;
 
     public interface Identity {
     }
