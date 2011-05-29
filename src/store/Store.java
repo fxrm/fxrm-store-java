@@ -43,11 +43,6 @@ public class Store {
         String[] by();
     }
 
-    public static interface Converter {
-        Object intern(Object val) throws Exception;
-        Object extern(Object val) throws Exception;
-    }
-
     public static class ConfigurationException extends RuntimeException {
         public ConfigurationException(String message) {
             super(message);
@@ -68,7 +63,16 @@ public class Store {
         Iterator<Object> invoke(Object[] args) throws Exception;
     }
 
-    private static final Converter DUMMY = new Converter() {
+    private static interface InternalConverter {
+        // special marker value when peeking
+        static final Object NONEXISTENT = new Object();
+
+        Object intern(Object val) throws Exception;
+        Object extern(Object val) throws Exception;
+        Object peek(Object val) throws Exception;
+    }
+
+    private static final InternalConverter DUMMY = new InternalConverter() {
         @Override
         public Object intern(Object val) {
             return val;
@@ -78,16 +82,18 @@ public class Store {
         public Object extern(Object val) {
             return val;
         }
+
+        @Override
+        public Object peek(Object val) {
+            return val;
+        }
     };
 
     /**
      * Property value converter dedicated to identity properties.
      */
-    private static class IdentityConverter implements Converter {
+    private static class IdentityConverter implements InternalConverter {
         private final StoreProxy.IdentityRegistry ar;
-
-        // special marker value when peeking
-        private static final Object NONEXISTENT = new Object();
 
         public IdentityConverter(StoreProxy.IdentityRegistry ar) {
             this.ar = ar;
@@ -103,7 +109,8 @@ public class Store {
             return val == null ? null : ar.getId(val);
         }
 
-        private Object peek(Object val) {
+        @Override
+        public Object peek(Object val) {
             if(val == null)
                 return val;
 
@@ -212,7 +219,7 @@ public class Store {
 
         private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {
             final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
-            final Converter[] conv = new Converter[fields.size()];
+            final InternalConverter[] conv = new InternalConverter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
@@ -264,10 +271,10 @@ public class Store {
                             Object[] setArgs = new Object[args.length];
                             for(int i = 0; i < args.length; i++) {
                                 // use the "peek" mode if converting an identity object to detect brand new instances
-                                setArgs[i] = conv[i] instanceof IdentityConverter ? ((IdentityConverter)conv[i]).peek(args[i]) : conv[i].extern(args[i]);
+                                setArgs[i] = conv[i].peek(args[i]);
 
                                 // if a brand new object is one of the criteria, result is always empty
-                                if(setArgs[i] == IdentityConverter.NONEXISTENT)
+                                if(setArgs[i] == InternalConverter.NONEXISTENT)
                                     return Collections.emptySet().iterator();
                             }
 
