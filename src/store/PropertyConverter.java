@@ -69,7 +69,7 @@ abstract class PropertyConverter {
 
         @Override
         public Object intern(Object val) throws Exception {
-            return impl.intern(store, val);
+            return impl.intern(store, (String)val);
         }
 
         @Override

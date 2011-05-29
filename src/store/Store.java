@@ -59,8 +59,8 @@ public class Store {
      * Store instance reference is passed to e.g. allow resolving identities.
      */
     public static interface Converter {
-        Object intern(Object store, Object val) throws Exception;
-        Object extern(Object store, Object val) throws Exception;
+        Object intern(Object store, String val) throws Exception;
+        String extern(Object store, Object val) throws Exception;
     }
 
     public static class ConfigurationException extends RuntimeException {
@@ -192,9 +192,10 @@ public class Store {
                 final PropertyConverter customConv = customConvs.get(objectClass).get(field.getKey());
 
                 conv[count] = ar == null ? (customConv == null ? PropertyConverter.DUMMY : customConv) : new PropertyConverter.Identity(ar);
+                Class dbValueClass = ar == null && customConv != null ? String.class : field.getValue();
 
                 try {
-                    cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ar != null);
+                    cols[count] = backend.createColumn(objectClass, field.getKey(), dbValueClass, ar != null);
                 } catch(Exception e) {
                     throw new BackendException(e);
                 }
