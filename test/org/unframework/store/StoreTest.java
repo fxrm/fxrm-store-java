@@ -27,7 +27,7 @@ public class StoreTest {
     @Test
     public void impliedGet() throws Exception {
         Store.create(ImpliedGet.class, backend);
-        verify(backend, times(2)).createColumn(Object.class, "abc", String.class, false);
+        verify(backend, times(2)).createColumn(Object.class, "abc", String.class);
     }
 
     private static interface ImpliedSet { void setAbc(Object id, String val); void setObjectAbc(Object id, String val); }
@@ -35,7 +35,7 @@ public class StoreTest {
     @Test
     public void impliedSet() throws Exception {
         Store.create(ImpliedSet.class, backend);
-        verify(backend, times(2)).createColumn(Object.class, "abc", String.class, false);
+        verify(backend, times(2)).createColumn(Object.class, "abc", String.class);
     }
 
     private static interface BasicGet { @Store.Get("abc") String foo(Object inst); }
@@ -43,7 +43,7 @@ public class StoreTest {
     @Test
     public void basicGet() throws Exception {
         Store.create(BasicGet.class, backend);
-        verify(backend).createColumn(Object.class, "abc", String.class, false);
+        verify(backend).createColumn(Object.class, "abc", String.class);
     }
 
     private static interface BasicSet { @Store.Set("abc") void foo(Object inst, String bar); }
@@ -51,7 +51,7 @@ public class StoreTest {
     @Test
     public void basicSet() throws Exception {
         Store.create(BasicSet.class, backend);
-        verify(backend).createColumn(Object.class, "abc", String.class, false);
+        verify(backend).createColumn(Object.class, "abc", String.class);
     }
 
     private static interface BasicFind { @Store.Find(by = "abc") Object findObject(String str); }
@@ -59,7 +59,7 @@ public class StoreTest {
     @Test
     public void basicFind() throws Exception {
         Store.create(BasicFind.class, backend);
-        verify(backend).createColumn(Object.class, "abc", String.class, false);
+        verify(backend).createColumn(Object.class, "abc", String.class);
     }
 
     @Test
