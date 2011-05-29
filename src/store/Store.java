@@ -43,6 +43,28 @@ public class Store {
         String[] by();
     }
 
+    @Retention(RetentionPolicy.RUNTIME)
+    public static @interface Info {
+        Convert[] converters();
+    }
+
+    @Retention(RetentionPolicy.RUNTIME)
+    public static @interface Convert {
+        Class object();
+        String property();
+        Class<? extends Converter> convert();
+    }
+
+    /**
+     * Interface that custom property value converters implement. Arguments
+     * are guaranteed to be non-null, and results must be non-null.
+     * Store instance reference is passed to e.g. allow resolving identities.
+     */
+    public static interface Converter {
+        Object intern(Object store, Object val) throws Exception;
+        Object extern(Object store, Object val) throws Exception;
+    }
+
     public static class ConfigurationException extends RuntimeException {
         public ConfigurationException(String message) {
             super(message);
@@ -113,6 +135,34 @@ public class Store {
         public Object peek(Object val) {
             Object result = ar.peekId(val);
             return result == null ? NONEXISTENT : result;
+        }
+    }
+
+    /**
+     * Property value converter dedicated to identity properties.
+     */
+    private static class CustomConverter implements InternalConverter {
+        private final StoreProxy store;
+        private final Converter impl;
+
+        public CustomConverter(StoreProxy store, Converter impl) {
+            this.store = store;
+            this.impl = impl;
+        }
+
+        @Override
+        public Object intern(Object val) throws Exception {
+            return impl.intern(store, val);
+        }
+
+        @Override
+        public Object extern(Object val) throws Exception {
+            return impl.extern(store, val);
+        }
+
+        @Override
+        public Object peek(Object val) throws Exception {
+            return impl.extern(store, val);
         }
     }
 
@@ -214,7 +264,7 @@ public class Store {
             return Character.toLowerCase(afterVerb.charAt(0)) + afterVerb.substring(1);
         }
 
-        private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {
+        private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities, Map<Class, Map<String, CustomConverter>> customConvs) {
             final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
             final InternalConverter[] conv = new InternalConverter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
@@ -222,8 +272,9 @@ public class Store {
             int count = 0;
             for(Map.Entry<String, Class> field: fields.entrySet()) {
                 final StoreProxy.IdentityRegistry ar = identities.get(field.getValue());
+                final CustomConverter customConv = customConvs.get(objectClass).get(field.getKey());
 
-                conv[count] = ar == null ? DUMMY : new IdentityConverter(ar);
+                conv[count] = ar == null ? (customConv == null ? DUMMY : customConv) : new IdentityConverter(ar);
 
                 try {
                     cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ar != null);
@@ -395,19 +446,37 @@ public class Store {
             // parse database action info for each method
             HashMap<Method, StoreMethodInfo> info = new HashMap<Method, StoreMethodInfo>();
             HashMap<Class, IdentityRegistry> reg = new HashMap<Class, IdentityRegistry>();
+            HashMap<Class, Map<String, CustomConverter>> convs = new HashMap<Class, Map<String, CustomConverter>>();
             for(Method method: iface.getMethods()) {
                 StoreMethodInfo mi = new StoreMethodInfo(method);
                 info.put(method, mi);
 
                 // track another identity class if necessary
-                if(!reg.containsKey(mi.objectClass))
+                if(!reg.containsKey(mi.objectClass)) {
                     reg.put(mi.objectClass, new IdentityRegistry(mi.objectClass));
+                    convs.put(mi.objectClass, new HashMap<String, CustomConverter>());
+                }
+            }
+
+            // register custom value converters
+            Info other = (Info)iface.getAnnotation(Info.class); // TODO: process super-classes!
+            if(other != null) {
+                for(Convert c: other.converters()) {
+                    try {
+                        Converter convInstance = c.convert().newInstance();
+                        convs.get(c.object()).put(c.property(), new CustomConverter(this, convInstance));
+                    } catch(IllegalAccessException e) {
+                        throw new RuntimeException(e); // TODO: better error?
+                    } catch(InstantiationException e) {
+                        throw new RuntimeException(e); // TODO: better error?
+                    }
+                }
             }
 
             // now instantiate actual data method implementations
             HashMap<Method, StoreMethodImplementation> result = new HashMap<Method, StoreMethodImplementation>();
             for(Map.Entry<Method, StoreMethodInfo> kv: info.entrySet())
-                result.put(kv.getKey(), kv.getValue().createImplementation(backend, reg));
+                result.put(kv.getKey(), kv.getValue().createImplementation(backend, reg, convs));
 
             actions = Collections.unmodifiableMap(result);
             identities = Collections.unmodifiableMap(reg);
