@@ -80,6 +80,38 @@ public class Store {
         }
     };
 
+    /**
+     * Property value converter dedicated to identity properties.
+     */
+    private static class IdentityConverter implements Converter {
+        private final StoreProxy.IdentityRegistry ar;
+
+        // special marker value when peeking
+        private static final Object NONEXISTENT = new Object();
+
+        public IdentityConverter(StoreProxy.IdentityRegistry ar) {
+            this.ar = ar;
+        }
+
+        @Override
+        public Object intern(Object val) {
+            return val == null ? null : ar.getObject((Backend.Identity)val);
+        }
+
+        @Override
+        public Object extern(Object val) throws Exception {
+            return val == null ? null : ar.getId(val);
+        }
+
+        private Object peek(Object val) {
+            if(val == null)
+                return val;
+
+            Object result = ar.peekId(val);
+            return result == null ? NONEXISTENT : result;
+        }
+    }
+
     private static class StoreMethodInfo {
         private final Class objectClass;
         private final LinkedHashMap<String, Class> fields = new LinkedHashMap<String, Class>();
@@ -180,26 +212,14 @@ public class Store {
 
         private StoreMethodImplementation createImplementation(Backend backend, Map<Class, StoreProxy.IdentityRegistry> identities) {
             final StoreProxy.IdentityRegistry ir = identities.get(objectClass);
-            final StoreProxy.IdentityRegistry[] ars = new StoreProxy.IdentityRegistry[fields.size()];
             final Converter[] conv = new Converter[fields.size()];
             Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
             for(Map.Entry<String, Class> field: fields.entrySet()) {
                 final StoreProxy.IdentityRegistry ar = identities.get(field.getValue());
-                ars[count] = ar;
 
-                conv[count] = ar == null ? DUMMY : new Converter() {
-                    @Override
-                    public Object intern(Object val) {
-                        return val == null ? null : ar.getObject((Backend.Identity)val);
-                    }
-
-                    @Override
-                    public Object extern(Object val) throws Exception {
-                        return val == null ? null : ar.getId(val);
-                    }
-                };
+                conv[count] = ar == null ? DUMMY : new IdentityConverter(ar);
 
                 try {
                     cols[count] = backend.createColumn(objectClass, field.getKey(), field.getValue(), ar != null);
@@ -243,17 +263,12 @@ public class Store {
                         public Iterator<Object> invoke(Object[] args) throws Exception {
                             Object[] setArgs = new Object[args.length];
                             for(int i = 0; i < args.length; i++) {
-                                if(ars[i] == null || args[i] == null) {
-                                    setArgs[i] = args[i];
-                                } else {
-                                    Backend.Identity id = ars[i].peekId(args[i]);
+                                // use the "peek" mode if converting an identity object to detect brand new instances
+                                setArgs[i] = conv[i] instanceof IdentityConverter ? ((IdentityConverter)conv[i]).peek(args[i]) : conv[i].extern(args[i]);
 
-                                    // if a brand new object is one of the criteria, result is always empty
-                                    if(id == null)
-                                        return Collections.emptySet().iterator();
-
-                                    setArgs[i] = id;
-                                }
+                                // if a brand new object is one of the criteria, result is always empty
+                                if(setArgs[i] == IdentityConverter.NONEXISTENT)
+                                    return Collections.emptySet().iterator();
                             }
 
                             final Iterator<Backend.Identity> found = finder.invoke(setArgs).iterator();
