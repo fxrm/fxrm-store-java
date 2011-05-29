@@ -101,19 +101,16 @@ public class Store {
 
         @Override
         public Object intern(Object val) {
-            return val == null ? null : ar.getObject((Backend.Identity)val);
+            return ar.getObject((Backend.Identity)val);
         }
 
         @Override
         public Object extern(Object val) throws Exception {
-            return val == null ? null : ar.getId(val);
+            return ar.getId(val);
         }
 
         @Override
         public Object peek(Object val) {
-            if(val == null)
-                return val;
-
             Object result = ar.peekId(val);
             return result == null ? NONEXISTENT : result;
         }
@@ -243,7 +240,8 @@ public class Store {
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
                             Backend.Identity id = ir.peekId(args[0]);
-                            return conv[0].intern(id == null ? null : getter.invoke(id));
+                            Object result = id == null ? null : getter.invoke(id);
+                            return result == null ? null : conv[0].intern(result);
                         }
                     };
                 case 2:
@@ -256,7 +254,8 @@ public class Store {
                             Object[] setArgs = new Object[args.length - 1];
                             System.arraycopy(args, 1, setArgs, 0, setArgs.length);
                             for(int i = 0; i < setArgs.length; i++)
-                                setArgs[i] = conv[i].extern(setArgs[i]);
+                                if(setArgs[i] != null)
+                                    setArgs[i] = conv[i].extern(setArgs[i]);
 
                             setter.invoke(id, setArgs);
                             return null;
@@ -270,12 +269,14 @@ public class Store {
                         public Iterator<Object> invoke(Object[] args) throws Exception {
                             Object[] setArgs = new Object[args.length];
                             for(int i = 0; i < args.length; i++) {
-                                // use the "peek" mode if converting an identity object to detect brand new instances
-                                setArgs[i] = conv[i].peek(args[i]);
+                                if(args[i] != null) {
+                                    // use the "peek" mode if converting an identity object to detect brand new instances
+                                    setArgs[i] = conv[i].peek(args[i]);
 
-                                // if a brand new object is one of the criteria, result is always empty
-                                if(setArgs[i] == InternalConverter.NONEXISTENT)
-                                    return Collections.emptySet().iterator();
+                                    // if a brand new object is one of the criteria, result is always empty
+                                    if(setArgs[i] == InternalConverter.NONEXISTENT)
+                                        return Collections.emptySet().iterator();
+                                }
                             }
 
                             final Iterator<Backend.Identity> found = finder.invoke(setArgs).iterator();
