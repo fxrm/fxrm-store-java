@@ -10,36 +10,18 @@ package org.unframework.store;
 import java.util.Collection;
 
 /**
- * Generic database backend, used to implement store actions.
+ * Minimal column-based database interface.
+ * NOTE: identity objects are created/retrieved in a database-dependent way (e.g. SQL backends will need a table name and row ID).
  */
 public interface Backend {
-    Getter createGetter(Column col);
-    Setter createSetter(Column[] cols);
-    Finder createFinder(Column[] cols);
-
-    Identity createIdentity(Class objectClass) throws Exception;
-
-    Identity intern(Class objectClass, String externalId);
-    String extern(Identity id);
-
-    Column createIdentityColumn(Class objectClass, String field, Class referenceClass) throws Exception;
-    Column createColumn(Class objectClass, String field, Class fieldType) throws Exception;
-
     public interface Identity {
     }
 
     public interface Column {
     }
 
-    public interface Getter {
-        Object invoke(Identity id) throws Exception;
-    }
+    Object get(Identity id, Column col) throws Exception;
+    void set(Identity id, Column col, Object value) throws Exception;
 
-    public interface Setter {
-        void invoke(Identity id, Object[] args) throws Exception;
-    }
-
-    public interface Finder {
-        Collection<Identity> invoke(Object[] args) throws Exception;
-    }
+    Collection<Identity> find(Column[] cols, Object[] args) throws Exception;
 }

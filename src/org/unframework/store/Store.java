@@ -63,6 +63,17 @@ public class Store {
         String extern(Object store, Object val) throws Exception;
     }
 
+    /**
+     * Helps map objects and properties into the column-based backend concepts.
+     */
+    public static interface ObjectMapping {
+        Backend.Column getIdentityColumn(Object objectClass, String propertyName, Class referenceClass);
+        Backend.Column getSimpleColumn(Object objectClass, String propertyName, Class valueClass);
+        Backend.Identity createIdentity(Object objectClass);
+        Backend.Identity intern(Object objectClass, Object externalId);
+        Object extern(Backend.Identity id);
+    }
+
     public static class ConfigurationException extends RuntimeException {
         public ConfigurationException(String message) {
             super(message);
@@ -181,10 +192,10 @@ public class Store {
             return Character.toLowerCase(afterVerb.charAt(0)) + afterVerb.substring(1);
         }
 
-        private StoreMethodImplementation createImplementation(Backend backend, Map<Class, IdentityRegistry> identities, Map<Class, Map<String, PropertyConverter>> customConvs) {
+        private StoreMethodImplementation createImplementation(final Backend backend, ObjectMapping naming, Map<Class, IdentityRegistry> identities, Map<Class, Map<String, PropertyConverter>> customConvs) {
             final IdentityRegistry ir = identities.get(objectClass);
             final PropertyConverter[] conv = new PropertyConverter[fields.size()];
-            Backend.Column[] cols = new Backend.Column[fields.size()];
+            final Backend.Column[] cols = new Backend.Column[fields.size()];
 
             int count = 0;
             for(Map.Entry<String, Class> field: fields.entrySet()) {
@@ -195,8 +206,8 @@ public class Store {
 
                 try {
                     cols[count] = ar == null ?
-                        backend.createColumn(objectClass, field.getKey(), customConv != null ? String.class : field.getValue()) :
-                        backend.createIdentityColumn(objectClass, field.getKey(), field.getValue());
+                        naming.getSimpleColumn(objectClass, field.getKey(), customConv != null ? String.class : field.getValue()) :
+                        naming.getIdentityColumn(objectClass, field.getKey(), field.getValue());
                 } catch(Exception e) {
                     throw new BackendException(e);
                 }
@@ -205,55 +216,45 @@ public class Store {
 
             switch(type) {
                 case 1:
-                    final Backend.Getter getter = backend.createGetter(cols[0]);
-
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
                             Backend.Identity id = ir.peekId(args[0]);
-                            Object result = id == null ? null : getter.invoke(id);
+                            Object result = id == null ? null : backend.get(id, cols[0]);
                             return result == null ? null : conv[0].intern(result);
                         }
                     };
                 case 2:
-                    final Backend.Setter setter = backend.createSetter(cols);
-
                     return new StoreMethodImplementation() {
                         public Object invoke(Object[] args) throws Exception {
                             Backend.Identity id = ir.getId(args[0]); // NOTE: instantiating before any values
 
-                            Object[] setArgs = new Object[args.length - 1];
-                            System.arraycopy(args, 1, setArgs, 0, setArgs.length);
-                            for(int i = 0; i < setArgs.length; i++)
-                                if(setArgs[i] != null)
-                                    setArgs[i] = conv[i].extern(setArgs[i]);
+                            for(int i = 1; i < args.length; i++)
+                                backend.set(id, cols[i - 1], args[i] == null ? null : conv[i - 1].extern(args[i]));
 
-                            setter.invoke(id, setArgs);
                             return null;
                         }
                     };
                 case 3:
-                    final Backend.Finder finder = backend.createFinder(cols);
-
                     // common implementation returning an iterator of proper object class
                     final FinderImplementation findImpl = new FinderImplementation() {
                         public Iterator<Object> invoke(Object[] args) throws Exception {
-                            Object[] setArgs = new Object[args.length];
+                            Object[] findArgs = new Object[args.length];
                             for(int i = 0; i < args.length; i++) {
                                 if(args[i] != null) {
                                     // use the "peek" mode if converting an identity object to detect brand new instances
                                     if(conv[i] instanceof PropertyConverter.Identity) {
-                                        setArgs[i] = ((PropertyConverter.Identity)conv[i]).peek(args[i]);
+                                        findArgs[i] = ((PropertyConverter.Identity)conv[i]).peek(args[i]);
 
                                         // if a brand new object is one of the criteria, result is always empty
-                                        if(setArgs[i] == PropertyConverter.Identity.NONEXISTENT)
+                                        if(findArgs[i] == PropertyConverter.Identity.NONEXISTENT)
                                             return Collections.emptySet().iterator();
                                     } else {
-                                        setArgs[i] = conv[i].extern(args[i]);
+                                        findArgs[i] = conv[i].extern(args[i]);
                                     }
                                 }
                             }
 
-                            final Iterator<Backend.Identity> found = finder.invoke(setArgs).iterator();
+                            final Iterator<Backend.Identity> found = backend.find(cols, findArgs).iterator();
 
                             // return a converting iterator
                             return new Iterator<Object>() {
@@ -314,11 +315,13 @@ public class Store {
 
     private static class StoreProxy implements InvocationHandler {
         private final Backend backend;
+        private final ObjectMapping naming;
         private final Map<Method, StoreMethodImplementation> actions;
         private final Map<Class, IdentityRegistry> identities;
 
-        public StoreProxy(Class iface, Backend backend) {
+        public StoreProxy(Class iface, Backend backend, ObjectMapping naming) {
             this.backend = backend;
+            this.naming = naming;
 
             if(!iface.isInterface())
                 throw new ConfigurationException("interface class required");
@@ -333,7 +336,7 @@ public class Store {
 
                 // track another identity class if necessary
                 if(!reg.containsKey(mi.objectClass)) {
-                    reg.put(mi.objectClass, new IdentityRegistry(mi.objectClass, backend));
+                    reg.put(mi.objectClass, new IdentityRegistry(mi.objectClass, naming));
                     convs.put(mi.objectClass, new HashMap<String, PropertyConverter>());
                 }
             }
@@ -356,7 +359,7 @@ public class Store {
             // now instantiate actual data method implementations
             HashMap<Method, StoreMethodImplementation> result = new HashMap<Method, StoreMethodImplementation>();
             for(Map.Entry<Method, StoreMethodInfo> kv: info.entrySet())
-                result.put(kv.getKey(), kv.getValue().createImplementation(backend, reg, convs));
+                result.put(kv.getKey(), kv.getValue().createImplementation(backend, naming, reg, convs));
 
             actions = Collections.unmodifiableMap(result);
             identities = Collections.unmodifiableMap(reg);
@@ -377,11 +380,11 @@ public class Store {
      * @param backend data backend instance to use
      * @return
      */
-    public static <T> T create(Class<T> iface, Backend backend) {
+    public static <T> T create(Class<T> iface, Backend backend, ObjectMapping naming) {
         return (T)Proxy.newProxyInstance(
                 Thread.currentThread().getContextClassLoader(),
                 new Class[] { iface },
-                new StoreProxy(iface, backend)
+                new StoreProxy(iface, backend, naming)
                 );
     }
 
@@ -391,10 +394,10 @@ public class Store {
      * @param obj identity object
      * @return external ID string, or null if the object is not persisted
      */
-    public static String extern(Object store, Object obj) {
+    public static Object extern(Object store, Object obj) {
         StoreProxy sp = (StoreProxy)Proxy.getInvocationHandler(store);
         Backend.Identity id = sp.identities.get(obj.getClass()).peekId(obj);
-        return sp.backend.extern(id);
+        return sp.naming.extern(id);
     }
 
     /**
@@ -405,9 +408,9 @@ public class Store {
      * @param externalId external ID string
      * @return object instance corresponding to given external ID
      */
-    public static <T> T intern(Object store, Class<T> identity, String externalId) {
+    public static <T> T intern(Object store, Class<T> identity, Object externalId) {
         StoreProxy sp = (StoreProxy)Proxy.getInvocationHandler(store);
-        Backend.Identity id = sp.backend.intern(identity, externalId);
+        Backend.Identity id = sp.naming.intern(identity, externalId);
         return (T)sp.identities.get(identity).getObject(id);
     }
 }

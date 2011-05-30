@@ -19,11 +19,11 @@ class IdentityRegistry {
     private final WeakHashMap<Object, Backend.Identity> objectToId = new WeakHashMap<Object, Backend.Identity>();
     private final HashMap<Backend.Identity, WeakReference<Object>> idToObject = new HashMap<Backend.Identity, WeakReference<Object>>();
     private final Class objectClass;
-    private final Backend backend;
+    private final Store.ObjectMapping gen;
 
-    IdentityRegistry(Class objectClass, Backend backend) {
+    IdentityRegistry(Class objectClass, Store.ObjectMapping gen) {
         this.objectClass = objectClass;
-        this.backend = backend;
+        this.gen = gen;
     }
 
     synchronized Backend.Identity peekId(Object obj) {
@@ -33,7 +33,7 @@ class IdentityRegistry {
     synchronized Backend.Identity getId(Object obj) throws Exception {
         Backend.Identity id = objectToId.get(obj);
         if(id == null) {
-            id = backend.createIdentity(objectClass);
+            id = gen.createIdentity(objectClass);
             objectToId.put(obj, id);
             idToObject.put(id, new WeakReference<Object>(obj));
         }
