@@ -3,7 +3,7 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package org.unframework.store;
+package org.fxrm.store;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;

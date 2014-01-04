@@ -3,9 +3,9 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package org.unframework.store.backend;
+package org.fxrm.store.backend;
 
-import org.unframework.store.Backend;
+import org.fxrm.store.Backend;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.sql.CallableStatement;

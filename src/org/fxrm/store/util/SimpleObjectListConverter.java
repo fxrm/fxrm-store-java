@@ -3,9 +3,9 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package org.unframework.store.util;
+package org.fxrm.store.util;
 
-import org.unframework.store.Store;
+import org.fxrm.store.Store;
 import java.util.ArrayList;
 import java.util.List;
 

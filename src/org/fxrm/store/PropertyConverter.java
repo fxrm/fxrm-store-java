@@ -3,7 +3,7 @@
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */
 
-package org.unframework.store;
+package org.fxrm.store;
 
 /**
  * Internal class to convert domain values to and from database representations.
