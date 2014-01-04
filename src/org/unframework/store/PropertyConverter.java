@@ -1,6 +1,4 @@
 /**
- * Unframework Store Library
- *
  * Copyright 2011, Nick Matantsev
  * Dual-licensed under the MIT or GPL Version 2 licenses.
  */

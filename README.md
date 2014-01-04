@@ -1,7 +1,7 @@
 
 **This is ALPHA code - use at your own risk!**
 
-Unframework Store API
+Fxrm Store API
 =====================
 
 Type-safe database persistence layer API, intended for use in update-heavy
